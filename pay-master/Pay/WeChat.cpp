@@ -234,7 +234,7 @@ enumWechatRet CWeChat::smallProgramLogin(
 
 		string& strReq = appendSmallProgramLoginContent(strJsCode);
 		string strResps("");
-		int iNetWorkRet = CHttpClient::get(WECHAT_HREF_SMALL_PROGRAM_LOGIN + strReq, strResps);
+		int iNetWorkRet = CHttpClient::get(WECHAT_HREF_SMALL_PROGRAM_LOGIN "?" + strReq, strResps);
 		if (iNetWorkRet)
 		{
 			SAVE_REQ_RESPS_AND_SET_RET_NETWORK_CODE(strReq, strResps, CWECHAT_RET_NETWORK_ERROR, iNetWorkRet);
