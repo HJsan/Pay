@@ -350,14 +350,14 @@ string CAlipay::appendTransferContent(
 #else
 	const string& asciiTrueName = strTrueName;
 #endif
-	format f("{\"out_biz_no\":\"%s\",\"payee_type\":\"ALIPAY_LOGONID\",\"payee_account\":\"%s\",\"amount\":\"\%.2f\",\"payee_real_name\":\"%s\",\"remark\":\"Ã·œ÷\"}");
+	format f("{\"out_biz_no\":\"%s\",\"payee_type\":\"ALIPAY_LOGONID\",\"payee_account\":\"%s\",\"amount\":\"\%.2f\",\"payee_real_name\":\"%s\"}");
 	f % strTradingCode.c_str() % strAlipayAccount.c_str() % (((float)iAmount) / 100.0) % asciiTrueName.c_str();
 	string& biz_content = f.str();
 
 	string totalString(""), clearString("");
 	CUtils::AppendContent(ALIPAY_REQ_APP_ID, m_strAppId, totalString, clearString, false);
 	CUtils::AppendContent(ALIPAY_REQ_BIZ_CONTENT, biz_content, totalString, clearString);
-	CUtils::AppendContent(ALIPAY_REQ_CHARSET, "utf-8", totalString, clearString);
+	CUtils::AppendContent(ALIPAY_REQ_CHARSET, "gb2312", totalString, clearString);
 	CUtils::AppendContent(ALIPAY_REQ_METHOD, "alipay.fund.trans.toaccount.transfer", totalString, clearString);
 	CUtils::AppendContent(ALIPAY_REQ_SIGN_TYPE, "RSA2", totalString, clearString);
 	CUtils::AppendContent(ALIPAY_REQ_TIMESTAMP, CUtils::getCurentTime(), totalString, clearString);
