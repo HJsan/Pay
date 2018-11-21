@@ -6,6 +6,8 @@
 #define ___MD_H__2
 #include <string>
 
+namespace SAPay {
+
 class Md5Utils
 {
 public:
@@ -33,5 +35,7 @@ private:
 	void Decode (unsigned long int *output, unsigned char *input, unsigned int len);
 	void MD5_memset (unsigned char* output,int value,unsigned int len);
 };
+
+}
 
 #endif

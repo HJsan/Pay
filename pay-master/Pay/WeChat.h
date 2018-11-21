@@ -2,25 +2,61 @@
 #include <map>
 #include <vector>
 #include <functional>
-#include "Pay/PayBase.h"
+#include "Pay/PayError.h"
 
-namespace SAPay
-{
+namespace SAPay{
 
-enum enumWechatTradeState
+enum CWechatRet
 {
-	CWECHAT_TRADE_STATE_SUCCESS,
-	CWECHAT_TRADE_STATE_REFUND,
-	CWECHAT_TRADE_STATE_NOTPAY,
-	CWECHAT_TRADE_STATE_CLOSED,
-	CWECHAT_TRADE_STATE_REVOKED,
-	CWECHAT_TRADE_STATE_USERPAYING,
-	CWECHAT_TRADE_STATE_PAYERROR,
-	CWECHAT_TRADE_STATE_UNKNOW
+	//成功
+	WECHAT_RET_OK = 0,
+
+	//未知错误
+	WECHAT_RET_UNKNOW_ERROR,
+
+	//return code错误
+	WECHAT_RET_ERR_CODE_ERROR,
+
+	//return msg错误
+	WECHAT_RET_RET_MSG_ERROR,
+
+	//网络错误
+	WECHAT_RET_NETWORK_ERROR,
+
+	//返回信息解析错误
+	WECHAT_RET_PARSE_ERROR,
+
+	//验签错误
+	WECHAT_RET_VERIFY_ERROR,
+
+	//无证书信息
+	WECHAT_RET_MISSING_CERT_INFO,
+
+	//无app secret信息
+	WECHAT_RET_MISSING_APP_SECRET
+};
+
+using CWechatError = CPayError<CWechatRet>;
+
+
+
+
+enum CWechatRespsTradeState
+{
+	WECHAT_TRADE_STATE_SUCCESS,
+	WECHAT_TRADE_STATE_REFUND,
+	WECHAT_TRADE_STATE_NOTPAY,
+	WECHAT_TRADE_STATE_CLOSED,
+	WECHAT_TRADE_STATE_REVOKED,
+	WECHAT_TRADE_STATE_USERPAYING,
+	WECHAT_TRADE_STATE_PAYERROR,
+	WECHAT_TRADE_STATE_UNKNOW
 };
 
 struct CWeChatResps
 {
+	CWeChatResps() :iTradeState(WECHAT_TRADE_STATE_UNKNOW) {}
+
 	//small program login
 	std::string strSessionKey;
 	std::string strOpenId;
@@ -31,7 +67,7 @@ struct CWeChatResps
 	std::string strPrepaySignedContent;
 
 	//query
-	enumWechatTradeState iTradeState;
+	CWechatRespsTradeState iTradeState;
 	std::string strBankType;
 	std::string strTotalFee;
 	std::string strCashFee;
@@ -39,29 +75,22 @@ struct CWeChatResps
 	std::string strOutTradeNo;
 	std::string strTimeEnd;
 	std::string strTradeStateDesc;
+
+	//refund
+	std::string strRefundFee;
+	std::string strRefundId;
 };
 
-enum enumWechatRet
-{
-	CWECHAT_RET_OK = 0,
-	CWECHAT_RET_UNKNOW_ERROR,
 
-	//you can call getLastErrInfo() to get err_code when it return CWECHAT_RET_ERR_CODE_ERROR
-	CWECHAT_RET_ERR_CODE_ERROR,
 
-	//you can call getLastErrInfo() to get return_msg when it return CWECHAT_RET_RET_MSG_ERROR
-	CWECHAT_RET_RET_MSG_ERROR,
-	CWECHAT_RET_NETWORK_ERROR,
-	CWECHAT_RET_PARSE_ERROR,
-	CWECHAT_RET_VERIFY_ERROR,
-	CWECHAT_RET_MISSING_APP_SECRET
-};
 
-class CWeChat : public CPayBase
+
+class CWeChat
 {
 public:
-	static std::map<std::string, std::string> parseRespsContentWechat(
-		const std::string& strNotify
+	static void parseWechatRespsAndNotify(
+		const std::string& strNotify,
+		std::map<std::string, std::string>& mapNameValue
 	);
 
 	static int verifyWechatRespsAndNotify(
@@ -83,26 +112,23 @@ public:
 	* @param strAppId						wechat app id
 	* @param strMchId						wechat mch id
 	* @param strMchKey						wechat mch key
-	* @param bIsApp							true-APP false-small program
 	* @param strAppSecret					wechat app secret 
 	* @param strCertPath					cert path
-	* @param strCertPassword				cert password
 	* @param strKeyPath						key path
-	* @param strKeyPassword					key password
 	*/
 	CWeChat(
 		const std::string& strAppId,
 		const std::string& strMchId,
 		const std::string& strMchKey,
-		bool bIsApp = true,
 		const std::string& strAppSecret = std::string(""),
 		const std::string& strCertPath = std::string(""),
-		const std::string& strCertPassword = std::string(""),
-		const std::string& strKeyPath = std::string(""),
-		const std::string& strKeyPassword = std::string("")
+		const std::string& strKeyPath = std::string("")
 	);
 
-	virtual ~CWeChat() { }
+	virtual ~CWeChat() {}
+
+	/*@param bIsApp							true-APP false-small program*/
+	void setIsApp(bool bIsApp) { m_bIsApp = bIsApp; }
 
 	/**
 	* @name queryPayStatus
@@ -113,11 +139,9 @@ public:
 	*										the out put include strTradeState, strBankType, strTotalFee,
 	*										strCashFee,strTransactionId, strOutTradeNo,strTimeEnd, strTradeStateDesc
 	*
-	* @param strOutTradingCode				the trading code which you want to query
-	*
-	* @return enumWechatRet					
+	* @param strOutTradingCode				the trading code which you want to query			
 	*/
-	enumWechatRet queryPayStatus(
+	bool queryPayStatus(
 		const std::string& strOutTradingCode,
 		CWeChatResps& wechatResps
 	);
@@ -130,11 +154,9 @@ public:
 	* @note									see https://developers.weixin.qq.com/miniprogram/dev/api/api-login.html?t=20161122
 	*										the output include strSessionKey and strOpenId
 	*
-	* @param strJsCode						the jscode from client
-	*
-	* @return enumWechatRet					
+	* @param strJsCode						the jscode from client				
 	*/
-	enumWechatRet smallProgramLogin(
+	bool smallProgramLogin(
 		const std::string& strJsCode,
 		CWeChatResps& wechatResps
 	);
@@ -157,11 +179,8 @@ public:
 	* @param strOpenId						wechat open id
 	*										if this is a small program appliction, 
 	*										you must input the strOpenId
-	*
-	*
-	* @return enumWechatRet
 	*/
-	enumWechatRet prepay(
+	bool prepay(
 		int iAmount,
 		long long llValidTime,
 		const std::string& strTradingCode,
@@ -196,11 +215,8 @@ public:
 	* @param strOpenId						wechat open id
 	*										if this is a small program appliction,
 	*										you must input the strOpenId
-	*
-	*
-	* @return enumWechatRet
 	*/
-	enumWechatRet prepayWithSign(
+	bool prepayWithSign(
 		int iAmount,
 		long long llValidTime,
 		const std::string& strTradingCode,
@@ -212,6 +228,23 @@ public:
 		const std::string& strOpenId = std::string("")
 	);
 
+	/**
+	* @name refund
+	*
+	* @brief 
+	*
+	* @note									https://pay.weixin.qq.com/wiki/doc/api/app/app.php?chapter=9_4&index=6
+	*/
+	bool refund(
+		int iTotalAmount,
+		int iRefundAmount,
+		const std::string& strOutTradeNo,
+		const std::string& strOutRefundNo,
+		CWeChatResps& wechatResps,
+		const std::string& strRemarks = "",
+		const std::string& strCallBackAddr = ""
+	);
+
 protected:
 
 	//token
@@ -221,9 +254,7 @@ protected:
 	std::string m_strMchKey;
 	std::string m_strAppSecret;
 	std::string m_strCertPath;
-	std::string m_strCertPassword;
 	std::string m_strKeyPath;
-	std::string m_strKeyPassword;
 
 protected:
 	/**
@@ -237,8 +268,6 @@ protected:
 	* @param strTimeStamp					current timestamp
 	* @param strPrepayId					prepayId
 	* @param strSignResult					sign
-	*
-	* @return void
 	*/
 	virtual void appendSmallProgramPrepayInfo(
 		const std::string& strNonceStr,
@@ -258,8 +287,6 @@ protected:
 	* @param strTimeStamp					current timestamp
 	* @param strPrepayId					prepayId
 	* @param strSignResult					sign
-	*
-	* @return void
 	*/
 	virtual void appendAppPrepayInfo(
 		const std::string& strNonceStr,
@@ -286,13 +313,12 @@ protected:
 	* @param strReq							request content
 	* @param strHref						request href
 	* @param func							if func return true, it will save error info
-	*
-	* @return int							return enumWechatRet
 	*/
-	enumWechatRet sendReqAndParseResps(
+	bool sendReqAndParseResps(
 		const std::string& strReq,
 		const std::string& strHref,
-		std::function<bool(std::map<std::string, std::string>&, enumWechatRet&)> func
+		std::function<CWechatRet(std::map<std::string, std::string>&)> func,
+		bool bPostWithCert = false
 	);
 
 	//append request content
@@ -312,7 +338,15 @@ protected:
 		const std::string& strAttach = "",
 		const std::string& strOpenId = ""
 	);
+
+	std::string appendRefundContent(
+		int iTotalAmount,
+		int iRefundAmount,
+		const std::string& strOutTradeNo,
+		const std::string& strOutRefundNo,
+		const std::string& strRemarks = "",
+		const std::string& strCallBackAddr = ""
+	);
 };
 
 }
-

@@ -64,6 +64,8 @@ Rotation is separate from addition to prevent recomputation.
 /* MD5 initialization. Begins an MD5 operation, writing a new context.
 */
 
+using namespace SAPay;
+
 Md5Utils::Md5Utils()
 {
 	MD5Init ();

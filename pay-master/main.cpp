@@ -15,105 +15,100 @@
 using namespace std;
 using namespace SAPay;
 
-int main()
+
+static bool testAlipayRefund()
 {
 	CAlipay alipay(
 		ALIPAY_APP_ID,
 		ALIPAY_PUB_KEY,
-		ALIPAY_PRIV_KEY
+		ALIPAY_PRIV_KEY,
+		true
 	);
 
-	//create alipay content for client to call the alipay client sdk
-	string& strAlipayContent = alipay.appendPayContent(
-		10000,
-		"trading code ABC",
-		"your subject",
-		"your notify url",
-		"90m",
-		"your custom params"
-	);
-	cout << "alipay content : " << strAlipayContent << endl << endl << endl << endl;
-
-	//refund
 	CAlipayResps alipayResps;
-	enumAlipayRet iAlpayRet = alipay.refund(
-		10000,
-		"your refund trading code",
-		"trading code ABC",
-		alipayResps
-	);
-
-	if (iAlpayRet == CALIPAY_RET_OK)
+	try
 	{
-		cout << "success" << endl;
-		cout << alipayResps.strRefundFee << endl;
-		cout << alipayResps.strGmtRefundPay << endl;
+		//refund
+		alipay.refund(
+			10000,
+			"your refund trading code",
+			"trading code",
+			alipayResps
+		);
 	}
-	else if (iAlpayRet == CALIPAY_RET_NETWORK_ERROR)
+	catch (const CAlipayError& e)
 	{
-		cout << "net work error, code : " << alipay.getLastErrInfo() << endl;
+		CAlipayRet iAlpayRet = e.getErrorCode();
+		if (iAlpayRet == ALIPAY_RET_NETWORK_ERROR)
+			cout << "alipay net work error, code : " << e.getNetWorkCode() << endl;
+		else if (iAlpayRet == ALIPAY_RET_VERIFY_ERROR)
+			cout << "alipay verify error, req : " << e.getLastReq() << " resps : " << e.getLastResps() << endl;
+		else if (iAlpayRet == ALIPAY_RET_PARSE_ERROR)
+			cout << "alipay resps parse error, req : " << e.getLastReq() << " resps : " << e.getLastResps() << endl;
+		else if (iAlpayRet == ALIPAY_RET_SUB_CODE_ERROR)
+			cout << "alipay sub code error, sub_code : " << e.getErrInfo() << " req : " << e.getLastReq() << " resps : " << e.getLastResps() << endl;
+		return false;
 	}
-	else if (iAlpayRet == CALIPAY_RET_VERIFY_ERROR)
-	{
-		cout << "verify error, req : " << alipay.getLastReq() << " resps : " << alipay.getLastResps() << endl;
-	}
-	else if (iAlpayRet == CALIPAY_RET_PARSE_ERROR)
-	{
-		cout << "resps parse error, req : " << alipay.getLastReq() << " resps : " << alipay.getLastResps() << endl;
-	}
-	else if (iAlpayRet == CALIPAY_RET_SUB_CODE_ERROR)
-	{
-		cout << "sub code error, sub_code : " << alipay.getLastErrInfo() << " req : " << alipay.getLastReq() << " resps : " << alipay.getLastResps() << endl;
-	}
+	cout << "success" << endl;
+	cout << alipayResps.strRefundFee << endl;
+	cout << alipayResps.strGmtRefundPay << endl;
 	cout << endl << endl << endl;
+	return true;
+};
 
 
 
-
+static bool testWechatPrepay()
+{
 	CWeChat wechat(
 		WECHAT_APP_ID,
 		WECHAT_MCH_ID,
 		WECHAT_MCH_KEY,
-		false,
-		WECHAT_APP_SECRET
+		WECHAT_APP_SECRET,
+		"cert/apiclient_cert.pem",
+		"cert/apiclient_key.pem"
 	);
 
 	//prepay and sign again
 	CWeChatResps wechatResps;
-	enumWechatRet iWeChatRet = wechat.prepayWithSign(
-		10000,
-		5000,
-		"your trading code",
-		"client ip address",
-		"body",
-		"your notify url",
-		wechatResps
-	);
+	try
+	{
+		wechat.prepayWithSign(
+			10000,
+			5000,
+			"trade no",
+			"remote ip",
+			"body",
+			"call back address",
+			wechatResps
+		);
+	}
+	catch (const CWechatError& e)
+	{
+		CWechatRet iWeChatRet = e.getErrorCode();
+		if (iWeChatRet == WECHAT_RET_NETWORK_ERROR)
+			cout << "wechat net work error, code : " << e.getNetWorkCode() << endl;
+		else if (iWeChatRet == WECHAT_RET_VERIFY_ERROR)
+			cout << "wechat verify error, req : " << e.getLastReq() << " resps : " << e.getLastResps() << endl;
+		else if (iWeChatRet == WECHAT_RET_PARSE_ERROR)
+			cout << "wechat resps parse error, req : " << e.getLastReq() << " resps : " << e.getLastResps() << endl;
+		else if (iWeChatRet == WECHAT_RET_ERR_CODE_ERROR)
+			cout << "wechat sub code error, err_code : " << e.getErrInfo() << " req : " << e.getLastReq() << " resps : " << e.getLastResps() << endl;
+		else if (iWeChatRet == WECHAT_RET_RET_MSG_ERROR)
+			cout << "wechat return msg error, return_msg : " << e.getErrInfo() << " req : " << e.getLastReq() << " resps : " << e.getLastResps() << endl;
+		return false;
+	}
+	cout << "success" << endl;
+	cout << wechatResps.strPrepaySignedContent << endl;
+	cout << endl << endl << endl;
+	return true;
+}
 
-	if (iWeChatRet == CWECHAT_RET_OK)
-	{
-		cout << "success" << endl;
-		cout << wechatResps.strPrepaySignedContent << endl;
-	}
-	else if (iWeChatRet == CWECHAT_RET_NETWORK_ERROR)
-	{
-		cout << "net work error, code : " << wechat.getLastErrInfo() << endl;
-	}
-	else if (iWeChatRet == CWECHAT_RET_VERIFY_ERROR)
-	{
-		cout << "verify error, req : " << wechat.getLastReq() << " resps : " << wechat.getLastResps() << endl;
-	}
-	else if (iWeChatRet == CWECHAT_RET_PARSE_ERROR)
-	{
-		cout << "resps parse error, req : " << wechat.getLastReq() << " resps : " << wechat.getLastResps() << endl;
-	}
-	else if (iWeChatRet == CWECHAT_RET_ERR_CODE_ERROR)
-	{
-		cout << "sub code error, err_code : " << wechat.getLastErrInfo() << " req : " << wechat.getLastReq() << " resps : " << wechat.getLastResps() << endl;
-	}
-	else if (iWeChatRet == CWECHAT_RET_RET_MSG_ERROR)
-	{
-		cout << "return msg error, return_msg : " << wechat.getLastErrInfo() << " req : " << wechat.getLastReq() << " resps : " << wechat.getLastResps() << endl;
-	}
+
+
+int main()
+{
+	testAlipayRefund();
+	testWechatPrepay();
 	return 0;
 }

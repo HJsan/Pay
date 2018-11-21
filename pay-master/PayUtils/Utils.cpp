@@ -5,6 +5,7 @@
 #include <boost/date_time/gregorian/gregorian.hpp>
 #include <boost/lexical_cast.hpp>
 
+using namespace SAPay;
 using namespace std;
 using namespace boost;
 using namespace boost::posix_time;
@@ -137,13 +138,6 @@ string CUtils::getCurentTime(bool bExtended /*= true*/)
 	);
 }
 
-string CUtils::getCurentDate(bool bExtended /*= true*/)
-{
-	return bExtended ?
-		to_iso_extended_string(day_clock::local_day()) :
-		to_iso_string(day_clock::local_day());
-}
-
 string CUtils::getDelayTime(
 	long long llDelay,
 	bool bExtended /*= true*/,
@@ -193,30 +187,6 @@ string CUtils::generate_unique_string(const unsigned int max_str_len /*= 8*/)
 	}
 
 	return str;
-}
-
-string CUtils::generate_unique_int(const unsigned int max_str_len /*= 4*/)
-{
-	static const char szAcsiiTable[] = {
-		'0', '1', '2', '3', '4',
-		'5', '6', '7', '8', '9'
-	};
-
-	static const int table_len = sizeof(szAcsiiTable) / sizeof(char);
-
-	string str;
-	for (unsigned int i = 0; i < max_str_len; i++) {
-
-		int index = get_random_int(0, table_len - 1);
-		str.insert(i, 1, szAcsiiTable[index]);
-	}
-
-	return str;
-}
-
-long long CUtils::getCurentTimeStampLL()
-{
-	return time(nullptr);
 }
 
 string CUtils::getCurentTimeStampStr()
@@ -271,24 +241,6 @@ string CUtils::UrlEncode(const std::string& str)
 			strTemp += CharHexConverter::ToHex((unsigned char)str[i] >> 4);
 			strTemp += CharHexConverter::ToHex((unsigned char)str[i] % 16);
 		}
-	}
-	return strTemp;
-}
-
-string CUtils::UrlDecode(const std::string& str)
-{
-	std::string strTemp = "";
-	size_t length = str.length();
-	for (size_t i = 0; i < length; i++)
-	{
-		if (str[i] == '+') strTemp += ' ';
-		else if (str[i] == '%')
-		{
-			unsigned char high = CharHexConverter::FromHex((unsigned char)str[++i]);
-			unsigned char low = CharHexConverter::FromHex((unsigned char)str[++i]);
-			strTemp += high * 16 + low;
-		}
-		else strTemp += str[i];
 	}
 	return strTemp;
 }

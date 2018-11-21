@@ -164,7 +164,7 @@
     <ClInclude Include="PayUtils\RSAUtils.h" />
     <ClInclude Include="PayUtils\Utils.h" />
     <ClInclude Include="Pay\Alipay.h" />
-    <ClInclude Include="Pay\PayBase.h" />
+    <ClInclude Include="Pay\PayError.h" />
     <ClInclude Include="Pay\PayHeader.h" />
     <ClInclude Include="Pay\WeChat.h" />
   </ItemGroup>

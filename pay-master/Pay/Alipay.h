@@ -4,23 +4,53 @@
 #include <vector>
 #include <functional>
 #include "rapidjson/document.h"
-#include "Pay/PayBase.h"
+#include "Pay/PayError.h"
 
-namespace SAPay
-{
+namespace SAPay{
 
-enum enumAlipayTradeStatus
+enum CAlipayRet
 {
-	CALIPAY_TRADE_STATUS_SUCCESS,
-	CALIPAY_TRADE_STATUS_CLOSED,
-	CALIPAY_TRADE_STATUS_FINISHED,
-	CALIPAY_TRADE_STATUS_WAIT_BUYER_PAY,
-	CALIPAY_TRADE_STATUS_UNKONW
+	//³É¹¦
+	ALIPAY_RET_OK = 0,
+
+	//Î´Öª´íÎó
+	ALIPAY_RET_UNKNOW_ERROR,
+
+	//sub code ´íÎó
+	ALIPAY_RET_SUB_CODE_ERROR,
+
+	//ÍøÂç´íÎó
+	ALIPAY_RET_NETWORK_ERROR,
+
+	//·µ»ØÐÅÏ¢½âÎö´íÎó
+	ALIPAY_RET_PARSE_ERROR,
+
+	//ÑéÇ©´íÎó
+	ALIPAY_RET_VERIFY_ERROR
 };
+
+using CAlipayError = CPayError<CAlipayRet>;
+
+
+
+
+
+enum CAlipayTradeStatus
+{
+	ALIPAY_TRADE_STATUS_SUCCESS,
+	ALIPAY_TRADE_STATUS_CLOSED,
+	ALIPAY_TRADE_STATUS_FINISHED,
+	ALIPAY_TRADE_STATUS_WAIT_BUYER_PAY,
+	ALIPAY_TRADE_STATUS_UNKONW
+};
+
+
+
+
 
 struct CAlipayResps
 {
-	CAlipayResps() :iTradeStatus(CALIPAY_TRADE_STATUS_UNKONW) {}
+	CAlipayResps() :iTradeStatus(ALIPAY_TRADE_STATUS_UNKONW) {}
 	//withdraw
 	std::string strOutBizNo;
 	std::string strPayDate;
@@ -38,28 +68,21 @@ struct CAlipayResps
 	std::string strRefundFee;
 
 	//query
-	enumAlipayTradeStatus iTradeStatus;
+	CAlipayTradeStatus iTradeStatus;
 	std::string strTotalAmount;
 };
 
-enum enumAlipayRet
-{
-	CALIPAY_RET_OK = 0,
-	CALIPAY_RET_UNKNOW_ERROR,
 
-	//you can call getLastErrInfo() to get sub code when it return CALIPAY_RET_SUB_CODE_ERROR
-	CALIPAY_RET_SUB_CODE_ERROR,
-	CALIPAY_RET_NETWORK_ERROR,
-	CALIPAY_RET_PARSE_ERROR,
-	CALIPAY_RET_VERIFY_ERROR
-};
 
-class CAlipay : public CPayBase
+
+
+class CAlipay
 {
 public:
 	//parse notify 
-	static std::map<std::string, std::string> parseNotifyContentAlipay(
-		const std::string& strNotify
+	static void parseAlipayNotify(
+		const std::string& strNotify,
+		std::map<std::string, std::string>& mapKeyValue
 	);
 
 	//check notify respsonse 0-sucess other-failed
@@ -94,6 +117,8 @@ public:
 		bool bIsDevMode = false
 	);
 	virtual ~CAlipay() { }
+
+	
 
 	/**
 	* @name appendPayContent
@@ -131,11 +156,9 @@ public:
 	*
 	* @param iAmount						refund amount
 	* @param strTradingCode					user trading code
-	* @param strOutTradingCode				the trading code which you want to refund
-	*
-	* @return enumAlipayRet							
+	* @param strOutTradingCode				the trading code which you want to refund						
 	*/
-	enumAlipayRet refund(
+	bool refund(
 		int iAmount,
 		const std::string& strTradingCode,
 		const std::string& strOutTradingCode,
@@ -153,16 +176,15 @@ public:
 	* @param iAmount						withdraw amount
 	* @param strTradingCode					user trading code
 	* @param strAlipayAccount				user alipay account
-	* @param strTrueName					user true name
-	*
-	* @return enumAlipayRet					
+	* @param strTrueName					user true name				
 	*/
-	enumAlipayRet withdraw(
+	bool withdraw(
 		int iAmount,
 		const std::string& strTradingCode,
 		const std::string& strAlipayAccount,
 		const std::string& strTrueName,
-		CAlipayResps& alipayResps
+		CAlipayResps& alipayResps,
+		const std::string& strRemarks = std::string("")
 	);
 
 	/**
@@ -174,11 +196,9 @@ public:
 	*										the output include strTradeNo, strOutTradeNo, strBuyerLogonId, 
 	*										strBuyerUserId, strTradeStatus, strTotalAmount
 	*
-	* @param strOutTradingCode				the trading code which you want to query
-	*
-	* @return enumAlipayRet					
+	* @param strOutTradingCode				the trading code which you want to query				
 	*/
-	enumAlipayRet queryPayStatus(
+	bool queryPayStatus(
 		const std::string& strOutTradingCode,
 		CAlipayResps& alipayResps
 	);
@@ -202,13 +222,11 @@ protected:
 	* @param strReq							request content 
 	* @param strRespsName					resposne key name
 	* @param func							if func return true, it will save error info
-	*
-	* @return int							return enumAlipayRet
 	*/
-	enumAlipayRet sendReqAndParseResps(
+	bool sendReqAndParseResps(
 		const std::string& strReq,
 		const std::string& strRespsName,
-		const std::function<bool(rapidjson::Value&, enumAlipayRet& iRet)> func
+		const std::function<CAlipayRet(rapidjson::Value&)> func
 	);
 
 	//append request content
@@ -216,7 +234,8 @@ protected:
 		int iAmount,
 		const std::string& strAlipayAccount,
 		const std::string& strTrueName,
-		const std::string& strTradingCode
+		const std::string& strTradingCode,
+		const std::string& strRemarks = std::string("")
 	);
 	std::string appendRefundContent(
 		int iAmount,
@@ -235,5 +254,5 @@ protected:
 		const std::string& strDateTime
 	);
 };
-}
 
+}

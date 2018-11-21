@@ -3,26 +3,24 @@
 #include <vector>
 #include <string>
 
+namespace SAPay {
+
 class CUtils
 {
 public:
 	static void split_string(std::string str, const std::string& strToken, std::vector<std::string>& vecStr);
 	static int get_random_int(int start, int end);
 	static std::string generate_unique_string(const unsigned int max_str_len = 8);
-	static std::string generate_unique_int(const unsigned int max_str_len = 4);
 	static std::string i2str(int i);
 	static std::string i2str(long long ll);
 
 	static std::vector<std::string> createDictionaryWithMap(std::map<std::string, std::string> mapNameValue);
 
 	static std::string getCurentTime(bool bExtended = true);
-	static std::string getCurentDate(bool bExtended = true);
 	static std::string getDelayTime(long long llDelay, bool bExtended = true, const std::string& strOriginalTime = std::string(""));
-	static long long getCurentTimeStampLL();
 	static std::string getCurentTimeStampStr();
 
 	static std::string UrlEncode(const std::string& str);
-	static std::string UrlDecode(const std::string& str);
 	static void AppendContent(const std::string& strName, const std::string& strValue, std::string& strTotalString, std::string& strClearString = std::string(""), bool bNeedSep = true);
 	static void AppendContentWithUrlEncode(const std::string& strName, const std::string& strValue, std::string& strTotalString, bool bNeedSep = true);
 	static void AppendContentWithoutUrlEncode(const std::string& strName, const std::string& strValue, std::string& strClearString, bool bNeedSep = true);
@@ -45,3 +43,5 @@ public:
 	static unsigned char ToHex(unsigned char x);
 	static unsigned char FromHex(unsigned char x);
 };
+
+}

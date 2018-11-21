@@ -12,18 +12,16 @@ using namespace boost;
 using namespace SAPay;
 
 
-map<string, string> CAlipay::parseNotifyContentAlipay(const string& strNotify)
+void CAlipay::parseAlipayNotify(const string& strNotify, map<string, string>& mapKeyValue)
 {
-	map<string, string> mapNameValue;
 	vector<string> vecNotify;
 	CUtils::split_string(strNotify, "&", vecNotify);
 	for (auto itr = vecNotify.begin(); itr != vecNotify.end(); ++itr)
 	{
-		int pos = itr->find('=');
+		size_t pos = itr->find('=');
 		if (pos != string::npos && itr->size() > pos + 1)
-			mapNameValue[itr->substr(0, pos)] = itr->substr(pos + 1);
+			mapKeyValue[itr->substr(0, pos)] = itr->substr(pos + 1);
 	}
-	return mapNameValue;
 }
 
 int CAlipay::verifyAlipayResps(const string& strRespsContent, const string& strSign, const string& pubKey)
@@ -68,7 +66,6 @@ CAlipay::CAlipay(
 	const string& strPrivKey,
 	bool bIsDevMode /*= false*/
 ) :
-	CPayBase(),
 	m_strAppId(strAppId),
 	m_strPubKey(strPubKey),
 	m_strPrivKey(strPrivKey),
@@ -76,96 +73,86 @@ CAlipay::CAlipay(
 {
 }
 
-enumAlipayRet CAlipay::sendReqAndParseResps(
-	const std::string& strReq,
-	const std::string& strRespsName,
-	const std::function<bool(rapidjson::Value&, enumAlipayRet& iRet)> func
+bool CAlipay::sendReqAndParseResps(
+	const string& strReq,
+	const string& strRespsName,
+	const function<CAlipayRet(rapidjson::Value&)> func
 )
 {
-	clearErrorInfo();
-	enumAlipayRet iRet = CALIPAY_RET_OK;
-	while (true)
+	string strResps("");
+	int iNetWorkRet = CHttpClient::post(m_bIsDevMode ? ALIPAY_HREF_DEV : ALIPAY_HREF, strReq, strResps);
+	if (iNetWorkRet)
 	{
-		string strResps("");
-		int iNetWorkRet = CHttpClient::post(m_bIsDevMode ? ALIPAY_HREF_DEV : ALIPAY_HREF, strReq, strResps);
-		if (iNetWorkRet)
-		{
-			SAVE_REQ_RESPS_AND_SET_RET_NETWORK_CODE(strReq, strResps, CALIPAY_RET_NETWORK_ERROR, iNetWorkRet);
-			break;
-		}
-
-		rapidjson::Document respsDocument;
-		respsDocument.Parse(strResps.c_str(), strResps.length());
-		if (!respsDocument.IsObject() ||
-			!respsDocument.HasMember(strRespsName.c_str()) ||
-			!respsDocument[strRespsName.c_str()].IsObject())
-		{
-			SAVE_REQ_RESPS_AND_SET_RET(strReq, strResps, CALIPAY_RET_PARSE_ERROR);
-			break;
-		}
-
-
-		rapidjson::Value& respsContent = respsDocument[strRespsName.c_str()];
-		if (!respsDocument.HasMember(ALIPAY_RESPS_SIGN) ||
-			!respsDocument[ALIPAY_RESPS_SIGN].IsString())
-		{
-			SAVE_REQ_RESPS_AND_SET_RET(strReq, strResps, CALIPAY_RET_UNKNOW_ERROR);
-			if (respsContent.HasMember(ALIPAY_RESPS_SUB_CODE)
-				&& respsContent[ALIPAY_RESPS_SUB_CODE].IsString())
-			{
-				//save sub code
-				m_strLastErrInfo = respsContent[ALIPAY_RESPS_SUB_CODE].GetString();
-				iRet = CALIPAY_RET_SUB_CODE_ERROR;
-			}
-			break;
-		}
-
-		//check sign
-		if (verifyAlipayResps(
-			convertJsonToString(respsContent),
-			respsDocument[ALIPAY_RESPS_SIGN].GetString(),
-			m_strPubKey
-		) < 0)
-		{
-			SAVE_REQ_RESPS_AND_SET_RET(strReq, strResps, CALIPAY_RET_VERIFY_ERROR);
-			break;
-		}
-
-		if (!respsContent.HasMember(ALIPAY_RESPS_CODE) ||
-			!respsContent[ALIPAY_RESPS_CODE].IsString() ||
-			!respsContent.HasMember(ALIPAY_RESPS_MSG) ||
-			!respsContent[ALIPAY_RESPS_MSG].IsString())
-		{
-			SAVE_REQ_RESPS_AND_SET_RET(strReq, strResps, CALIPAY_RET_PARSE_ERROR);
-			break;
-		}
-
-		//check code and msg
-		const char* code = respsContent[ALIPAY_RESPS_CODE].GetString();
-		const char* msg = respsContent[ALIPAY_RESPS_MSG].GetString();
-		if (strcmp(code, "10000") != 0 || strcmp(msg, "Success") != 0)
-		{
-			SAVE_REQ_RESPS_AND_SET_RET(strReq, strResps, CALIPAY_RET_UNKNOW_ERROR);
-			if (respsContent.HasMember(ALIPAY_RESPS_SUB_CODE)
-				&& respsContent[ALIPAY_RESPS_SUB_CODE].IsString())
-			{
-				//save sub code
-				m_strLastErrInfo = respsContent[ALIPAY_RESPS_SUB_CODE].GetString();
-				iRet = CALIPAY_RET_SUB_CODE_ERROR;
-			}
-			break;
-		}
-
-		if (func(respsContent, iRet))
-		{
-			SAVE_REQ_RESPS(strReq, strResps);
-		}
-		break;
+		throw CAlipayError(ALIPAY_RET_NETWORK_ERROR, strReq, strResps, iNetWorkRet);
 	}
-	return iRet;
+
+	rapidjson::Document respsDocument;
+	respsDocument.Parse(strResps.c_str(), strResps.length());
+	if (!respsDocument.IsObject() ||
+		!respsDocument.HasMember(strRespsName.c_str()) ||
+		!respsDocument[strRespsName.c_str()].IsObject())
+	{
+		throw CAlipayError(ALIPAY_RET_PARSE_ERROR, strReq, strResps, iNetWorkRet);
+	}
+
+
+	rapidjson::Value& respsContent = respsDocument[strRespsName.c_str()];
+	if (!respsDocument.HasMember(ALIPAY_RESPS_SIGN) ||
+		!respsDocument[ALIPAY_RESPS_SIGN].IsString())
+	{
+		if (respsContent.HasMember(ALIPAY_RESPS_SUB_CODE) &&
+			respsContent[ALIPAY_RESPS_SUB_CODE].IsString())
+		{
+			throw CAlipayError(ALIPAY_RET_SUB_CODE_ERROR, strReq, strResps, respsContent[ALIPAY_RESPS_SUB_CODE].GetString());
+		}
+		else
+		{
+			throw CAlipayError(ALIPAY_RET_UNKNOW_ERROR, strReq, strResps);
+		}
+	}
+
+	//check sign
+	if (verifyAlipayResps(
+		convertJsonToString(respsContent),
+		respsDocument[ALIPAY_RESPS_SIGN].GetString(),
+		m_strPubKey) < 0)
+	{
+		throw CAlipayError(ALIPAY_RET_VERIFY_ERROR, strReq, strResps);
+	}
+
+	if (!respsContent.HasMember(ALIPAY_RESPS_CODE) ||
+		!respsContent[ALIPAY_RESPS_CODE].IsString() ||
+		!respsContent.HasMember(ALIPAY_RESPS_MSG) ||
+		!respsContent[ALIPAY_RESPS_MSG].IsString())
+	{
+		throw CAlipayError(ALIPAY_RET_PARSE_ERROR, strReq, strResps);
+	}
+
+	//check code and msg
+	const char* code = respsContent[ALIPAY_RESPS_CODE].GetString();
+	const char* msg = respsContent[ALIPAY_RESPS_MSG].GetString();
+	if (strcmp(code, "10000") != 0 || strcmp(msg, "Success") != 0)
+	{
+		if (respsContent.HasMember(ALIPAY_RESPS_SUB_CODE) &&
+			respsContent[ALIPAY_RESPS_SUB_CODE].IsString())
+		{
+			throw CAlipayError(ALIPAY_RET_SUB_CODE_ERROR, strReq, strResps, respsContent[ALIPAY_RESPS_SUB_CODE].GetString());
+		}
+		else
+		{
+			throw CAlipayError(ALIPAY_RET_UNKNOW_ERROR, strReq, strResps);
+		}
+	}
+
+	CAlipayRet iRet = func(respsContent);
+	if (iRet != ALIPAY_RET_OK)
+	{
+		throw CAlipayError(iRet, strReq, strResps);
+	}
+	return true;
 }
 
-enumAlipayRet CAlipay::refund(
+bool CAlipay::refund(
 	int iAmount,
 	const string& strTradingCode,
 	const string& strOutTradingCode,
@@ -175,7 +162,7 @@ enumAlipayRet CAlipay::refund(
 	return sendReqAndParseResps(
 		appendRefundContent(iAmount, strTradingCode, strOutTradingCode),
 		ALIPAY_RESPS_RFND,
-		[&alipayResps](rapidjson::Value& respsContent, enumAlipayRet& iRet) -> bool
+		[&alipayResps](rapidjson::Value& respsContent) -> CAlipayRet
 	{
 		if (!respsContent.HasMember(ALIPAY_RESPS_BUYER_LOGON_ID) ||
 			!respsContent[ALIPAY_RESPS_BUYER_LOGON_ID].IsString() ||
@@ -192,8 +179,7 @@ enumAlipayRet CAlipay::refund(
 			!respsContent.HasMember(ALIPAY_RESPS_REFUND_FEE) ||
 			!respsContent[ALIPAY_RESPS_REFUND_FEE].IsString())
 		{
-			iRet = CALIPAY_RET_PARSE_ERROR;
-			return true;
+			return ALIPAY_RET_PARSE_ERROR;
 		}
 
 		alipayResps.strBuyerLogonId = respsContent[ALIPAY_RESPS_BUYER_LOGON_ID].GetString();
@@ -203,23 +189,24 @@ enumAlipayRet CAlipay::refund(
 		alipayResps.strRefundFee = respsContent[ALIPAY_RESPS_REFUND_FEE].GetString();
 		alipayResps.strOutTradeNo = respsContent[ALIPAY_RESPS_OUT_TRADE_NO].GetString();
 		alipayResps.strTradeNo = respsContent[ALIPAY_RESPS_TRADE_NO].GetString();
-		return false;
+		return ALIPAY_RET_OK;
 	}
 	);
 }
 
-enumAlipayRet CAlipay::withdraw(
+bool CAlipay::withdraw(
 	int iAmount,
 	const string& strTradingCode,
 	const string& strAlipayAccount,
 	const string& strTrueName,
-	CAlipayResps& alipayResps
+	CAlipayResps& alipayResps,
+	const string& strRemarks /*= string("")*/
 )
 {
 	return sendReqAndParseResps(
-		appendTransferContent(iAmount, strAlipayAccount, strTrueName, strTradingCode),
+		appendTransferContent(iAmount, strAlipayAccount, strTrueName, strTradingCode, strRemarks),
 		ALIPAY_RESPS_TRSFR,
-		[this, &alipayResps](rapidjson::Value& respsContent, enumAlipayRet& iRet) -> bool
+		[this, &alipayResps](rapidjson::Value& respsContent) -> CAlipayRet
 	{
 		if (!respsContent.HasMember(ALIPAY_RESPS_ORDER_ID) ||
 			!respsContent[ALIPAY_RESPS_ORDER_ID].IsString() ||
@@ -228,27 +215,26 @@ enumAlipayRet CAlipay::withdraw(
 			!respsContent.HasMember(ALIPAY_RESPS_PAY_DATE) ||
 			!respsContent[ALIPAY_RESPS_PAY_DATE].IsString())
 		{
-			iRet = CALIPAY_RET_PARSE_ERROR;
-			return true;
+			return ALIPAY_RET_PARSE_ERROR;
 		}
 
 		alipayResps.strOrderId = respsContent[ALIPAY_RESPS_ORDER_ID].GetString();
 		alipayResps.strPayDate = respsContent[ALIPAY_RESPS_PAY_DATE].GetString();
 		alipayResps.strOutBizNo = respsContent[ALIPAY_RESPS_OUT_BIZ_NO].GetString();
-		return false;
+		return ALIPAY_RET_OK;
 	}
 	);
 }
 
-enumAlipayRet CAlipay::queryPayStatus(
-	const std::string& strOutTradingCode,
+bool CAlipay::queryPayStatus(
+	const string& strOutTradingCode,
 	CAlipayResps& alipayResps
 )
 {
 	return sendReqAndParseResps(
 		appendQueryStatusContent(strOutTradingCode),
 		ALIPAY_RESPS_QUERY,
-		[&alipayResps](rapidjson::Value& respsContent, enumAlipayRet& iRet) -> bool
+		[&alipayResps](rapidjson::Value& respsContent) -> CAlipayRet
 	{
 		if (!respsContent.HasMember(ALIPAY_RESPS_BUYER_LOGON_ID) ||
 			!respsContent[ALIPAY_RESPS_BUYER_LOGON_ID].IsString() ||
@@ -263,8 +249,7 @@ enumAlipayRet CAlipay::queryPayStatus(
 			!respsContent.HasMember(ALIPAY_RESPS_TOTAL_AMOUNT) ||
 			!respsContent[ALIPAY_RESPS_TOTAL_AMOUNT].IsString())
 		{
-			iRet = CALIPAY_RET_PARSE_ERROR;
-			return true;
+			return ALIPAY_RET_PARSE_ERROR;
 		}
 
 		alipayResps.strBuyerLogonId = respsContent[ALIPAY_RESPS_BUYER_LOGON_ID].GetString();
@@ -274,17 +259,17 @@ enumAlipayRet CAlipay::queryPayStatus(
 		alipayResps.strTotalAmount = respsContent[ALIPAY_RESPS_TOTAL_AMOUNT].GetString();
 
 		string strTradeStatus = respsContent[ALIPAY_RESPS_TRADE_STATUS].GetString();
-		if (strTradeStatus == ALIPAY_TRADE_STATUS_SUCCESS)
-			alipayResps.iTradeStatus = CALIPAY_TRADE_STATUS_SUCCESS;
-		else if(strTradeStatus == ALIPAY_TRADE_STATUS_CLOSED)
-			alipayResps.iTradeStatus = CALIPAY_TRADE_STATUS_CLOSED;
-		else if (strTradeStatus == ALIPAY_TRADE_STATUS_FINISHED)
-			alipayResps.iTradeStatus = CALIPAY_TRADE_STATUS_FINISHED;
-		else if (strTradeStatus == ALIPAY_TRADE_STATUS_WAIT_BUYER_PAY)
-			alipayResps.iTradeStatus = CALIPAY_TRADE_STATUS_WAIT_BUYER_PAY;
+		if (strTradeStatus == ALIPAY_TRADE_STATUS_SUCCESS_STR)
+			alipayResps.iTradeStatus = ALIPAY_TRADE_STATUS_SUCCESS;
+		else if(strTradeStatus == ALIPAY_TRADE_STATUS_CLOSED_STR)
+			alipayResps.iTradeStatus = ALIPAY_TRADE_STATUS_CLOSED;
+		else if (strTradeStatus == ALIPAY_TRADE_STATUS_FINISHED_STR)
+			alipayResps.iTradeStatus = ALIPAY_TRADE_STATUS_FINISHED;
+		else if (strTradeStatus == ALIPAY_TRADE_STATUS_WAIT_BUYER_PAY_STR)
+			alipayResps.iTradeStatus = ALIPAY_TRADE_STATUS_WAIT_BUYER_PAY;
 		else
-			alipayResps.iTradeStatus = CALIPAY_TRADE_STATUS_UNKONW;
-		return false;
+			alipayResps.iTradeStatus = ALIPAY_TRADE_STATUS_UNKONW;
+		return ALIPAY_RET_OK;
 	}
 	);
 }
@@ -294,21 +279,19 @@ string CAlipay::appendPayContent(
 	const string& strTradingCode,
 	const string& strSubject,
 	const string& strCallBack,
-	const string& strTimeOut /*= std::string("30m")*/,
+	const string& strTimeOut /*= string("30m")*/,
 	const string& strPassBackParams /*= string("")*/
 )
 {
 #ifdef CHECK_INPUT_STRING_TYPE
 	const string& u8Subject = ch_trans::is_utf8(strSubject.c_str()) ? strSubject : ch_trans::ascii_to_utf8(strSubject);
-#else
-	const string& u8Subject = strSubject;
-#endif
 
-#ifdef CHECK_INPUT_STRING_TYPE
 	string u8PassBackParams("");
 	if (!strPassBackParams.empty())
 		u8PassBackParams = ch_trans::is_utf8(strPassBackParams.c_str()) ? strPassBackParams : ch_trans::ascii_to_utf8(strPassBackParams);
 #else
+	const string& u8Subject = strSubject;
+
 	const string& u8PassBackParams = strPassBackParams;
 #endif
 
@@ -342,16 +325,22 @@ string CAlipay::appendTransferContent(
 	int iAmount,
 	const string& strAlipayAccount,
 	const string& strTrueName,
-	const string& strTradingCode
+	const string& strTradingCode,
+	const string& strRemarks /*= string("")*/
 )
 {
 #ifdef CHECK_INPUT_STRING_TYPE
 	const string& asciiTrueName = ch_trans::is_utf8(strTrueName.c_str()) ? ch_trans::utf8_to_ascii(strTrueName) : strTrueName;
+
+	const string& asciiRemarks = ch_trans::is_utf8(strRemarks.c_str()) ? ch_trans::utf8_to_ascii(strRemarks) : strRemarks;
 #else
 	const string& asciiTrueName = strTrueName;
+
+	const string& asciiRemarks = strRemarks;
 #endif
-	format f("{\"out_biz_no\":\"%s\",\"payee_type\":\"ALIPAY_LOGONID\",\"payee_account\":\"%s\",\"amount\":\"\%.2f\",\"payee_real_name\":\"%s\"}");
-	f % strTradingCode.c_str() % strAlipayAccount.c_str() % (((float)iAmount) / 100.0) % asciiTrueName.c_str();
+
+	format f("{\"out_biz_no\":\"%s\",\"payee_type\":\"ALIPAY_LOGONID\",\"payee_account\":\"%s\",\"amount\":\"%.2f\",\"payee_real_name\":\"%s\",\"remark\":\"%s\"}");
+	f % strTradingCode.c_str() % strAlipayAccount.c_str() % (((float)iAmount) / 100.0) % asciiTrueName.c_str() % asciiRemarks.c_str();
 	string& biz_content = f.str();
 
 	string totalString(""), clearString("");

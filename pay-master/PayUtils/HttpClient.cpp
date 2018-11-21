@@ -2,6 +2,9 @@
 #include "HttpClient.h"
 #include <curl/curl.h>
 
+#define UNKNOW_ERROR -65535
+
+using namespace SAPay;
 using namespace std;
 
 vector<string> CHttpClient::makeHeaderWithMap(const map<string, string>& mapHeader)
@@ -32,16 +35,15 @@ int CHttpClient::post(
 	const string& strData,
 	string& strRespsContent,
 	string& strRespsHeader /*= string("")*/,
-	int iTimeOut /*= CHTTPCLIENT_DEFAULT_TOME_OUT*/,
+	int iTimeOut /*= HTTPCLIENT_DEFAULT_TOME_OUT*/,
 	const vector<string>& vecHeader /*= vector<string>()*/
 ) 
 {
-	int ret = CHTTPCLIENT_RET_UNKNOW_ERROR;
+	int ret = UNKNOW_ERROR;
 	CURL *curl = curl_easy_init();
 	if (curl) 
 	{
 		struct curl_slist* headers = NULL;
-		headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
 		for (auto itr = vecHeader.begin(); itr != vecHeader.end(); ++itr)
 			headers = curl_slist_append(headers, (*itr).c_str());
 		curl_easy_setopt(curl, CURLOPT_URL, strHref.c_str());
@@ -69,10 +71,10 @@ int CHttpClient::post(
 int CHttpClient::get(
 	const string &strHref,
 	string& strRespsContent,
-	int iTimeOut /*= CHTTPCLIENT_DEFAULT_TOME_OUT*/
+	int iTimeOut /*= HTTPCLIENT_DEFAULT_TOME_OUT*/
 )
 {
-	int ret = CHTTPCLIENT_RET_UNKNOW_ERROR;
+	int ret = UNKNOW_ERROR;
 	CURL* curl = curl_easy_init();
 	if (curl)
 	{
@@ -95,20 +97,17 @@ int CHttpClient::postWithCert(
 	const string& strData,
 	const string& strCertPath,
 	const string& strKeyPath,
-	const string& strCertPassword,
-	const string& strKeyPassword,
 	string& strRespsContent,
 	string& strRespsHeader /*= string("")*/,
-	int iTimeOut /*= CHTTPCLIENT_DEFAULT_TOME_OUT*/,
+	int iTimeOut /*= HTTPCLIENT_DEFAULT_TOME_OUT*/,
 	const vector<string>& vecHeader /*= vector<string>()*/
 )
 {
-	int ret = CHTTPCLIENT_RET_UNKNOW_ERROR;
+	int ret = UNKNOW_ERROR;
 	CURL *curl = curl_easy_init();
 	if (curl)
 	{
 		struct curl_slist* headers = NULL;
-		headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
 		for (auto itr = vecHeader.begin(); itr != vecHeader.end(); ++itr)
 			headers = curl_slist_append(headers, (*itr).c_str());
 		curl_easy_setopt(curl, CURLOPT_URL, strHref.c_str());
@@ -120,10 +119,8 @@ int CHttpClient::postWithCert(
 		curl_easy_setopt(curl, CURLOPT_TIMEOUT, iTimeOut);
 		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
 		curl_easy_setopt(curl, CURLOPT_SSLCERT, strCertPath.c_str());
-		curl_easy_setopt(curl, CURLOPT_SSLCERTPASSWD, strCertPassword.c_str());
 		curl_easy_setopt(curl, CURLOPT_SSLCERTTYPE, "PEM");
 		curl_easy_setopt(curl, CURLOPT_SSLKEY, strKeyPath.c_str());
-		curl_easy_setopt(curl, CURLOPT_SSLKEYPASSWD, strKeyPassword.c_str());
 		curl_easy_setopt(curl, CURLOPT_SSLKEYTYPE, "PEM");
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, strData.c_str());
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, strData.size());

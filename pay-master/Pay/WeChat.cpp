@@ -1,20 +1,21 @@
 #include "WeChat.h"
+#include "PayHeader.h"
 #include "Tinyxml/tinyxml.h"
 #include "rapidjson/document.h"
 #include "Utils/Utils.h"
 #include "Utils/Md5Utils.h"
 #include "Utils/HttpClient.h"
-#include "PayHeader.h"
-#include <stdarg.h>
 #include <boost/format.hpp>
 
 using namespace std;
 using namespace boost;
 using namespace SAPay;
 
-map<string, string> CWeChat::parseRespsContentWechat(const string& strNotify)
+void CWeChat::parseWechatRespsAndNotify(
+	const string& strNotify,
+	map<string, string>& mapNameValue
+)
 {
-	map<string, string> mapNameValue;
 	TiXmlDocument document;
 	document.Parse(strNotify.c_str());
 	TiXmlNode* pRoot = document.FirstChild();
@@ -31,7 +32,6 @@ map<string, string> CWeChat::parseRespsContentWechat(const string& strNotify)
 			}
 		}
 	}
-	return mapNameValue;
 }
 
 int CWeChat::verifyWechatRespsAndNotify(
@@ -51,7 +51,9 @@ int CWeChat::verifyWechatRespsAndNotify(
 				sign = itrr->second;
 				continue;
 			}
-			CUtils::AppendContentWithoutUrlEncode(*itr, itrr->second, content, !content.empty());
+
+			if (!itrr->second.empty())
+				CUtils::AppendContentWithoutUrlEncode(*itr, itrr->second, content, !content.empty());
 		}
 	}
 	CUtils::AppendContentWithoutUrlEncode("key", strMchKey, content);
@@ -71,95 +73,97 @@ static void addXmlChild(TiXmlElement* pRoot, const string& key, const string& va
 }
 
 CWeChat::CWeChat(
-	const std::string& strAppId,
-	const std::string& strMchId,
-	const std::string& strMchKey,
-	bool bIsApp /*= true*/,
-	const std::string& strAppSecret /*= std::string("")*/,
-	const std::string& strCertPath /*= std::string("")*/,
-	const std::string& strCertPassword /*= std::string("")*/,
-	const std::string& strKeyPath /*= std::string("")*/,
-	const std::string& strKeyPassword /*= std::string("")*/
+	const string& strAppId,
+	const string& strMchId,
+	const string& strMchKey,
+	const string& strAppSecret /*= string("")*/,
+	const string& strCertPath /*= string("")*/,
+	const string& strKeyPath /*= string("")*/
 ) :
-	CPayBase(),
-	m_bIsApp(bIsApp),
+	m_bIsApp(true),
 	m_strAppId(strAppId),
 	m_strMchId(strMchId),
 	m_strMchKey(strMchKey),
 	m_strAppSecret(strAppSecret),
 	m_strCertPath(strCertPath),
-	m_strCertPassword(strCertPassword),
-	m_strKeyPath(strKeyPath),
-	m_strKeyPassword(strKeyPassword)
+	m_strKeyPath(strKeyPath)
 {
 }
 
-enumWechatRet CWeChat::sendReqAndParseResps(
-	const std::string& strReq,
-	const std::string& strHref,
-	std::function<bool(std::map<std::string, std::string>&, enumWechatRet&)> func
+bool CWeChat::sendReqAndParseResps(
+	const string& strReq,
+	const string& strHref,
+	function<CWechatRet(map<string, string>&)> func,
+	bool bPostWithCert /*= false*/
 )
 {
-	clearErrorInfo();
-	enumWechatRet iRet = CWECHAT_RET_OK;
-	while (true)
+	string strResps("");
+	int iNetWorkRet = 0;
+	if (bPostWithCert)
 	{
-		string strResps("");
-		int iNetWorkRet = CHttpClient::post(strHref, strReq, strResps);
-		if (iNetWorkRet)
+		if (m_strCertPath.empty() || m_strKeyPath.empty())
 		{
-			SAVE_REQ_RESPS_AND_SET_RET_NETWORK_CODE(strReq, strResps, CWECHAT_RET_NETWORK_ERROR, iNetWorkRet);
-			break;
+			throw CWechatError(WECHAT_RET_MISSING_CERT_INFO);
 		}
-
-		map<string, string>& mapResps = parseRespsContentWechat(strResps);
-		auto itrReturnCode = mapResps.find(WECHAT_RESPS_RETURN_CODE);
-		auto itrResultCode = mapResps.find(WECHAT_RESPS_RESULT_CODE);
-		if (itrReturnCode == mapResps.end() ||
-			itrResultCode == mapResps.end() ||
-			itrReturnCode->second != "SUCCESS" ||
-			itrResultCode->second != "SUCCESS")
-		{
-			SAVE_REQ_RESPS_AND_SET_RET(strReq, strResps, CWECHAT_RET_UNKNOW_ERROR);
-			auto itrErrCode = mapResps.find(WECHAT_RESPS_ERR_CODE);
-			auto itrReturnMsg = mapResps.find(WECHAT_RESPS_RETURN_MSG);
-			if (itrErrCode != mapResps.end())
-			{
-				m_strLastErrInfo = itrErrCode->second;
-				iRet = CWECHAT_RET_ERR_CODE_ERROR;
-			}
-			else if (itrReturnMsg != mapResps.end())
-			{
-				m_strLastErrInfo = itrReturnMsg->second;
-				iRet = CWECHAT_RET_RET_MSG_ERROR;
-			}
-			break;
-		}
-
-		if (verifyWechatRespsAndNotify(mapResps, m_strMchKey) < 0)
-		{
-			SAVE_REQ_RESPS_AND_SET_RET(strReq, strResps, CWECHAT_RET_VERIFY_ERROR);
-			break;
-		}
-		
-		if (func(mapResps, iRet))
-		{
-			SAVE_REQ_RESPS(strReq, strResps);
-		}
-		break;
+		iNetWorkRet = CHttpClient::postWithCert(strHref, strReq, m_strCertPath, m_strKeyPath, strResps);
 	}
-	return iRet;
+	else
+	{
+		iNetWorkRet = CHttpClient::post(strHref, strReq, strResps);;
+	}
+
+	if (iNetWorkRet)
+	{
+		throw CWechatError(WECHAT_RET_NETWORK_ERROR, strReq, strResps, iNetWorkRet);
+	}
+
+	map<string, string> mapResps;
+	parseWechatRespsAndNotify(strResps, mapResps);
+	auto itrReturnCode = mapResps.find(WECHAT_RESPS_RETURN_CODE);
+	auto itrResultCode = mapResps.find(WECHAT_RESPS_RESULT_CODE);
+	if (itrReturnCode == mapResps.end() ||
+		itrResultCode == mapResps.end() ||
+		itrReturnCode->second != "SUCCESS" ||
+		itrResultCode->second != "SUCCESS")
+	{
+		auto itrErrCode = mapResps.find(WECHAT_RESPS_ERR_CODE);
+		auto itrReturnMsg = mapResps.find(WECHAT_RESPS_RETURN_MSG);
+		if (itrErrCode != mapResps.end())
+		{
+			throw CWechatError(WECHAT_RET_ERR_CODE_ERROR, strReq, strResps, itrErrCode->second);
+		}
+		else if (itrReturnMsg != mapResps.end())
+		{
+			throw CWechatError(WECHAT_RET_RET_MSG_ERROR, strReq, strResps, itrReturnMsg->second);
+		}
+		else
+		{
+			throw CWechatError(WECHAT_RET_UNKNOW_ERROR, strReq, strResps);
+		}
+	}
+
+	if (verifyWechatRespsAndNotify(mapResps, m_strMchKey) < 0)
+	{
+		throw CWechatError(WECHAT_RET_VERIFY_ERROR, strReq, strResps);
+	}
+
+	CWechatRet iRet = func(mapResps);
+	if (iRet != WECHAT_RET_OK)
+	{
+		throw CWechatError(iRet, strReq, strResps);
+	}
+	return true;
 }
 
-enumWechatRet CWeChat::queryPayStatus(
-	const std::string& strOutTradingCode, 
+bool CWeChat::queryPayStatus(
+	const string& strOutTradingCode, 
 	CWeChatResps& wechatResps
 )
 {
 	return sendReqAndParseResps(
 		appendQueryStatusContent(strOutTradingCode),
 		WECHAT_HREF_QUERY,
-		[&wechatResps](map<string, string>& mapResps, enumWechatRet& iRet) -> bool
+		[&wechatResps](map<string, string>& mapResps) -> CWechatRet
 	{
 		auto itrOpenId = mapResps.find(WECHAT_RESPS_OPEN_ID);
 		auto itrTradeType = mapResps.find(WECHAT_RESPS_TRADE_TYPE);
@@ -182,8 +186,7 @@ enumWechatRet CWeChat::queryPayStatus(
 			itrTimeEnd == mapResps.end() ||
 			itrTradeStateDesc == mapResps.end())
 		{
-			iRet = CWECHAT_RET_PARSE_ERROR;
-			return true;
+			return WECHAT_RET_PARSE_ERROR;
 		}
 
 		wechatResps.strOpenId = itrOpenId->second;
@@ -196,119 +199,139 @@ enumWechatRet CWeChat::queryPayStatus(
 		wechatResps.strTimeEnd = itrTimeEnd->second;
 		wechatResps.strTradeStateDesc = itrTradeStateDesc->second;
 
-		if (itrTradeState->second == WECHAT_TRADE_STATE_SECCESS)
-			wechatResps.iTradeState = CWECHAT_TRADE_STATE_SUCCESS;
-		else if(itrTradeState->second == WECHAT_TRADE_STATE_REFUND)
-			wechatResps.iTradeState = CWECHAT_TRADE_STATE_REFUND;
-		else if (itrTradeState->second == WECHAT_TRADE_STATE_NOTPAY)
-			wechatResps.iTradeState = CWECHAT_TRADE_STATE_NOTPAY;
-		else if (itrTradeState->second == WECHAT_TRADE_STATE_CLOSED)
-			wechatResps.iTradeState = CWECHAT_TRADE_STATE_CLOSED;
-		else if (itrTradeState->second == WECHAT_TRADE_STATE_REVOKED)
-			wechatResps.iTradeState = CWECHAT_TRADE_STATE_REVOKED;
-		else if (itrTradeState->second == WECHAT_TRADE_STATE_USERPAYING)
-			wechatResps.iTradeState = CWECHAT_TRADE_STATE_USERPAYING;
-		else if (itrTradeState->second == WECHAT_TRADE_STATE_PAYERROR)
-			wechatResps.iTradeState = CWECHAT_TRADE_STATE_PAYERROR;
+		if (itrTradeState->second == WECHAT_TRADE_STATE_SUCCESS_STR)
+			wechatResps.iTradeState = WECHAT_TRADE_STATE_SUCCESS;
+		else if(itrTradeState->second == WECHAT_TRADE_STATE_REFUND_STR)
+			wechatResps.iTradeState = WECHAT_TRADE_STATE_REFUND;
+		else if (itrTradeState->second == WECHAT_TRADE_STATE_NOTPAY_STR)
+			wechatResps.iTradeState = WECHAT_TRADE_STATE_NOTPAY;
+		else if (itrTradeState->second == WECHAT_TRADE_STATE_CLOSED_STR)
+			wechatResps.iTradeState = WECHAT_TRADE_STATE_CLOSED;
+		else if (itrTradeState->second == WECHAT_TRADE_STATE_REVOKED_STR)
+			wechatResps.iTradeState = WECHAT_TRADE_STATE_REVOKED;
+		else if (itrTradeState->second == WECHAT_TRADE_STATE_USERPAYING_STR)
+			wechatResps.iTradeState = WECHAT_TRADE_STATE_USERPAYING;
+		else if (itrTradeState->second == WECHAT_TRADE_STATE_PAYERROR_STR)
+			wechatResps.iTradeState = WECHAT_TRADE_STATE_PAYERROR;
 		else
-			wechatResps.iTradeState = CWECHAT_TRADE_STATE_UNKNOW;
-		return false;
+			wechatResps.iTradeState = WECHAT_TRADE_STATE_UNKNOW;
+		return WECHAT_RET_OK;
 	}
 	);
 }
 
-enumWechatRet CWeChat::smallProgramLogin(
-	const std::string& strJsCode,
+bool CWeChat::refund(
+	int iTotalAmount,
+	int iRefundAmount,
+	const std::string& strOutTradeNo,
+	const std::string& strOutRefundNo,
+	CWeChatResps& wechatResps,
+	const std::string& strRemarks /*= ""*/,
+	const std::string& strCallBackAddr /*= ""*/
+)
+{
+	return sendReqAndParseResps(
+		appendRefundContent(iTotalAmount, iRefundAmount, strOutTradeNo, strOutRefundNo, strRemarks, strCallBackAddr),
+		WECHAT_HREF_REFUND,
+		[&wechatResps](map<string, string>& mapResps) -> CWechatRet
+	{
+		auto itrRefundId = mapResps.find(WECHAT_RESPS_REFUND_ID);
+		auto itrRefundFee = mapResps.find(WECHAT_RESPS_REFUND_FEE);
+		if (itrRefundId == mapResps.end() || itrRefundFee == mapResps.end())
+		{
+			return WECHAT_RET_PARSE_ERROR;
+		}
+
+		wechatResps.strRefundFee = itrRefundFee->second;
+		wechatResps.strRefundId = itrRefundId->second;
+		return WECHAT_RET_OK;
+	},
+		true
+	);
+}
+
+bool CWeChat::smallProgramLogin(
+	const string& strJsCode,
 	CWeChatResps& wechatResps
 )
 {
-	clearErrorInfo();
-	enumWechatRet iRet = CWECHAT_RET_OK;
-	while (true)
+	if (m_strAppSecret.empty())
 	{
-		if (m_strAppSecret.empty())
-		{
-			iRet = CWECHAT_RET_MISSING_APP_SECRET;
-			break;
-		}
-
-		string& strReq = appendSmallProgramLoginContent(strJsCode);
-		string strResps("");
-		int iNetWorkRet = CHttpClient::get(WECHAT_HREF_SMALL_PROGRAM_LOGIN "?" + strReq, strResps);
-		if (iNetWorkRet)
-		{
-			SAVE_REQ_RESPS_AND_SET_RET_NETWORK_CODE(strReq, strResps, CWECHAT_RET_NETWORK_ERROR, iNetWorkRet);
-			break;
-		}
-
-		rapidjson::Document respsDocument;
-		respsDocument.Parse(strResps.c_str(), strResps.length());
-		if (!respsDocument.IsObject() ||
-			!respsDocument.HasMember(WECHAT_RESPS_SESSION_KEY) ||
-			!respsDocument.HasMember(WECHAT_RESPS_OPEN_ID) ||
-			!respsDocument[WECHAT_RESPS_SESSION_KEY].IsString() ||
-			!respsDocument[WECHAT_RESPS_OPEN_ID].IsString())
-		{
-			SAVE_REQ_RESPS_AND_SET_RET(strReq, strResps, CWECHAT_RET_PARSE_ERROR);
-			break;
-		}
-
-		wechatResps.strSessionKey = respsDocument[WECHAT_RESPS_SESSION_KEY].GetString();
-		wechatResps.strOpenId = respsDocument[WECHAT_RESPS_OPEN_ID].GetString();
-		break;
+		throw CWechatError(WECHAT_RET_MISSING_APP_SECRET);
 	}
-	return iRet;
+
+	string& strReq = appendSmallProgramLoginContent(strJsCode);
+	string strResps("");
+	int iNetWorkRet = CHttpClient::get(WECHAT_HREF_SMALL_PROGRAM_LOGIN + strReq, strResps);
+	if (iNetWorkRet)
+	{
+		throw CWechatError(WECHAT_RET_NETWORK_ERROR, strReq, strResps, iNetWorkRet);
+	}
+
+	rapidjson::Document respsDocument;
+	respsDocument.Parse(strResps.c_str(), strResps.length());
+	if (!respsDocument.IsObject() ||
+		!respsDocument.HasMember(WECHAT_RESPS_SESSION_KEY) ||
+		!respsDocument.HasMember(WECHAT_RESPS_OPEN_ID) ||
+		!respsDocument[WECHAT_RESPS_SESSION_KEY].IsString() ||
+		!respsDocument[WECHAT_RESPS_OPEN_ID].IsString())
+	{
+		throw CWechatError(WECHAT_RET_PARSE_ERROR, strReq, strResps);
+	}
+
+	wechatResps.strSessionKey = respsDocument[WECHAT_RESPS_SESSION_KEY].GetString();
+	wechatResps.strOpenId = respsDocument[WECHAT_RESPS_OPEN_ID].GetString();
+	return true;
 }
 
-enumWechatRet CWeChat::prepay(
+bool CWeChat::prepay(
 	int iAmount,
 	long long llValidTime,
-	const std::string& strTradingCode,
-	const std::string& strRemoteIP,
-	const std::string& strBody,
-	const std::string& strCallBackAddr,
+	const string& strTradingCode,
+	const string& strRemoteIP,
+	const string& strBody,
+	const string& strCallBackAddr,
 	CWeChatResps& wechatResps,
-	const std::string& strAttach /*= std::string("")*/,
-	const std::string& strOpenId /*= std::string("")*/
+	const string& strAttach /*= string("")*/,
+	const string& strOpenId /*= string("")*/
 )
 {
 	return sendReqAndParseResps(
 		appendPrepayContent(iAmount, llValidTime, strTradingCode, strRemoteIP, 
 			strBody, strCallBackAddr, strAttach, strOpenId),
 		WECHAT_HREF_PREPAY,
-		[&wechatResps](map<string, string>& mapResps, enumWechatRet& iRet) -> bool
+		[&wechatResps](map<string, string>& mapResps) -> CWechatRet
 	{
 		auto itrTradeType = mapResps.find(WECHAT_RESPS_TRADE_TYPE);
 		auto itrPrepayId = mapResps.find(WECHAT_RESPS_PREPAY_ID);
 		if (itrTradeType == mapResps.end() ||
 			itrPrepayId == mapResps.end())
 		{
-			iRet = CWECHAT_RET_PARSE_ERROR;
-			return true;
+			return WECHAT_RET_PARSE_ERROR;
 		}
 
 		wechatResps.strTradeType = itrTradeType->second;
 		wechatResps.strPrepayId = itrPrepayId->second;
-		return false;
+		return WECHAT_RET_OK;
 	}
 	);
 }
 
-enumWechatRet CWeChat::prepayWithSign(
+bool CWeChat::prepayWithSign(
 	int iAmount,
 	long long llValidTime,
-	const std::string& strTradingCode,
-	const std::string& strRemoteIP,
-	const std::string& strBody,
-	const std::string& strCallBackAddr,
+	const string& strTradingCode,
+	const string& strRemoteIP,
+	const string& strBody,
+	const string& strCallBackAddr,
 	CWeChatResps& wechatResps,
-	const std::string& strAttach /*= std::string("")*/,
-	const std::string& strOpenId /*= std::string("")*/
+	const string& strAttach /*= string("")*/,
+	const string& strOpenId /*= string("")*/
 )
 {
-	enumWechatRet iRet = prepay(iAmount, llValidTime, strTradingCode, strRemoteIP,
+	bool bRet = prepay(iAmount, llValidTime, strTradingCode, strRemoteIP,
 		strBody, strCallBackAddr, wechatResps, strAttach, strOpenId);
-	if (iRet == CWECHAT_RET_OK)
+	if (bRet)
 	{
 		string& strNonceStr = CUtils::generate_unique_string(32);
 		string& strTimeStamp = CUtils::getCurentTimeStampStr();
@@ -317,13 +340,13 @@ enumWechatRet CWeChat::prepayWithSign(
 			appendAppPrepayInfo(strNonceStr, strTimeStamp, wechatResps.strPrepayId, strSignResult, wechatResps.strPrepaySignedContent) :
 			appendSmallProgramPrepayInfo(strNonceStr, strTimeStamp, wechatResps.strPrepayId, strSignResult, wechatResps.strPrepaySignedContent);
 	}
-	return iRet;
+	return bRet;
 }
 
 string CWeChat::signPrepay(
-	const std::string& strNonceStr,
-	const std::string& strTimeStamp,
-	const std::string& strPrepayId
+	const string& strNonceStr,
+	const string& strTimeStamp,
+	const string& strPrepayId
 )
 {
 	string signContent("");
@@ -354,10 +377,10 @@ string CWeChat::signPrepay(
 }
 
 void CWeChat::appendAppPrepayInfo(
-	const std::string& strNonceStr,
-	const std::string& strTimeStamp,
-	const std::string& strPrepayId,
-	const std::string& strSignResult,
+	const string& strNonceStr,
+	const string& strTimeStamp,
+	const string& strPrepayId,
+	const string& strSignResult,
 	string& strPrepaySignedContent
 )
 {
@@ -369,14 +392,14 @@ void CWeChat::appendAppPrepayInfo(
 };
 
 void CWeChat::appendSmallProgramPrepayInfo(
-	const std::string& strNonceStr,
-	const std::string& strTimeStamp,
-	const std::string& strPrepayId,
-	const std::string& strSignResult,
+	const string& strNonceStr,
+	const string& strTimeStamp,
+	const string& strPrepayId,
+	const string& strSignResult,
 	string& strPrepaySignedContent
 )
 {
-	format f("{\"timeStamp\":\"%s\",\"nonceStr\":\"%s\",\"package\":\"prepay_id=%s\",\"signType\":\"MD5\",\"paySign\":\"\%s\"}");
+	format f("{\"timeStamp\":\"%s\",\"nonceStr\":\"%s\",\"package\":\"prepay_id=%s\",\"signType\":\"MD5\",\"paySign\":\"%s\"}");
 	f % strTimeStamp.c_str() % strNonceStr.c_str() % strPrepayId.c_str() % strSignResult.c_str();
 	strPrepaySignedContent = f.str();
 };
@@ -433,15 +456,13 @@ string CWeChat::appendPrepayContent(
 	string& strTimeExpire = CUtils::getDelayTime(llValidTime, false);
 #ifdef CHECK_INPUT_STRING_TYPE
 	const string& u8Body = ch_trans::is_utf8(strBody.c_str()) ? strBody : ch_trans::ascii_to_utf8(strBody);
-#else
-	const string& u8Body = strBody;
-#endif
 
-#ifdef CHECK_INPUT_STRING_TYPE
 	string u8Attach("");
 	if (!strAttach.empty())
 		u8Attach = ch_trans::is_utf8(strAttach.c_str()) ? strAttach : ch_trans::ascii_to_utf8(strAttach);
 #else
+	const string& u8Body = strBody;
+
 	const string& u8Attach = strAttach;
 #endif
 
@@ -487,6 +508,60 @@ string CWeChat::appendPrepayContent(
 	//add open id if exist
 	if (!strOpenId.empty())
 		addXmlChild(root, WECHAT_REQ_OPEN_ID, strOpenId);
+
+	TiXmlDocument document;
+	document.LinkEndChild(root);
+	TiXmlPrinter printer;
+	document.Accept(&printer);
+	return printer.CStr();
+}
+
+std::string CWeChat::appendRefundContent(
+	int iTotalAmount,
+	int iRefundAmount,
+	const std::string& strOutTradeNo,
+	const std::string& strOutRefundNo,
+	const std::string& strRemarks /*= ""*/,
+	const std::string& strCallBackAddr /*= ""*/
+)
+{
+	string& strNonceStr = CUtils::generate_unique_string(32);
+#ifdef CHECK_INPUT_STRING_TYPE
+	const string& u8Remarks = ch_trans::is_utf8(strRemarks.c_str()) ? strRemarks : ch_trans::ascii_to_utf8(strRemarks);
+#else
+	const string& u8Remarks = strRemarks;
+#endif
+
+	string signContent("");
+	CUtils::AppendContentWithoutUrlEncode(WECHAT_REQ_APP_ID, m_strAppId, signContent, false);
+	CUtils::AppendContentWithoutUrlEncode(WECHAT_REQ_MCH_ID, m_strMchId, signContent);
+	CUtils::AppendContentWithoutUrlEncode(WECHAT_REQ_NONCE_STR, strNonceStr, signContent);
+	if (!strCallBackAddr.empty())
+		CUtils::AppendContentWithoutUrlEncode(WECHAT_REQ_NOTIFY_URL, strCallBackAddr, signContent);
+	CUtils::AppendContentWithoutUrlEncode(WECHAT_REQ_OUT_REFUND_NO, strOutRefundNo, signContent);
+	CUtils::AppendContentWithoutUrlEncode(WECHAT_REQ_OUT_TRADE_NO, strOutTradeNo, signContent);
+	if (!u8Remarks.empty())
+		CUtils::AppendContentWithoutUrlEncode(WECHAT_REQ_REFUND_DESC, u8Remarks, signContent);
+	CUtils::AppendContentWithoutUrlEncode(WECHAT_REQ_REFUND_FEE, CUtils::i2str(iRefundAmount), signContent);
+	CUtils::AppendContentWithoutUrlEncode(WECHAT_REQ_TOTAL_FEE, CUtils::i2str(iTotalAmount), signContent);
+	CUtils::AppendContentWithoutUrlEncode(WECHAT_REQ_MCH_KEY, m_strMchKey, signContent);
+	string signResult("");
+	Md5Utils m5;
+	m5.encStr32(signContent.c_str(), signResult);
+
+	TiXmlElement* root = new TiXmlElement(WECHAT_XML_ROOT);
+	addXmlChild(root, WECHAT_REQ_APP_ID, m_strAppId);
+	addXmlChild(root, WECHAT_REQ_MCH_ID, m_strMchId);
+	addXmlChild(root, WECHAT_REQ_NONCE_STR, strNonceStr);
+	if (!strCallBackAddr.empty())
+		addXmlChild(root, WECHAT_REQ_NOTIFY_URL, strCallBackAddr);
+	addXmlChild(root, WECHAT_REQ_OUT_TRADE_NO, strOutTradeNo);
+	addXmlChild(root, WECHAT_REQ_OUT_REFUND_NO, strOutRefundNo);
+	addXmlChild(root, WECHAT_REQ_TOTAL_FEE, CUtils::i2str(iTotalAmount));
+	addXmlChild(root, WECHAT_REQ_REFUND_FEE, CUtils::i2str(iRefundAmount));
+	if (!u8Remarks.empty())
+		addXmlChild(root, WECHAT_REQ_REFUND_DESC, u8Remarks);
+	addXmlChild(root, WECHAT_REQ_SIGN, signResult);
 
 	TiXmlDocument document;
 	document.LinkEndChild(root);

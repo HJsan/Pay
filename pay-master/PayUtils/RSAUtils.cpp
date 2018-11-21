@@ -1,5 +1,5 @@
 #include "RSAUtils.h"
-#include "PayUtils/Utils.h"
+#include "Utils/Utils.h"
 
 #define RSA_ENC_DATA_SIZE 128
 #define RSA_PLAIN_TEXT_SIZE (RSA_ENC_DATA_SIZE - 11)
@@ -11,6 +11,7 @@
 #define XRSA_KEY_BITS (2048)
 #endif
 
+using namespace SAPay;
 using namespace std;
 
 //¹«Ô¿¼ÓÃÜ¡£

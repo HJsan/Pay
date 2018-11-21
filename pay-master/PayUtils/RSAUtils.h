@@ -3,6 +3,8 @@
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
 
+namespace SAPay {
+
 class CRSAUtils
 {
 public:
@@ -41,5 +43,7 @@ private:
 	//base64Ω‚√‹
 	static bool base64Decode(const std::string &str, unsigned char *bytes, int &len);
 };
+
+}
 
 
