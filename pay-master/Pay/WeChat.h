@@ -6,11 +6,8 @@
 
 namespace SAPay{
 
-enum CWechatRet
+enum CWeChatRet
 {
-	//成功
-	WECHAT_RET_OK = 0,
-
 	//未知错误
 	WECHAT_RET_UNKNOW_ERROR,
 
@@ -36,12 +33,12 @@ enum CWechatRet
 	WECHAT_RET_MISSING_APP_SECRET
 };
 
-using CWechatError = CPayError<CWechatRet>;
+using CWeChatError = CPayError<CWeChatRet>;
 
 
 
 
-enum CWechatRespsTradeState
+enum CWeChatRespsTradeState
 {
 	WECHAT_TRADE_STATE_SUCCESS,
 	WECHAT_TRADE_STATE_REFUND,
@@ -67,7 +64,7 @@ struct CWeChatResps
 	std::string strPrepaySignedContent;
 
 	//query
-	CWechatRespsTradeState iTradeState;
+	CWeChatRespsTradeState iTradeState;
 	std::string strBankType;
 	std::string strTotalFee;
 	std::string strCashFee;
@@ -88,11 +85,13 @@ struct CWeChatResps
 class CWeChat
 {
 public:
+	//将xml解析为map
 	static void parseWechatRespsAndNotify(
 		const std::string& strNotify,
 		std::map<std::string, std::string>& mapNameValue
 	);
 
+	//验签函数
 	static int verifyWechatRespsAndNotify(
 		const std::map<std::string, std::string>& mapResps, 
 		const std::string& strMchKey
@@ -103,11 +102,6 @@ public:
 
 	/**
 	* @name CWeChat
-	*
-	* @brief								
-	*
-	* @note									the cert and the key is used to
-	*										send request that need Two-Way Authentication
 	*
 	* @param strAppId						wechat app id
 	* @param strMchId						wechat mch id
@@ -136,15 +130,12 @@ public:
 	* @brief								query bill status
 	*
 	* @note									see https://pay.weixin.qq.com/wiki/doc/api/app/app.php?chapter=9_2&index=4
-	*										the out put include strTradeState, strBankType, strTotalFee,
+	*										输出字段包括 strTradeState, strBankType, strTotalFee,
 	*										strCashFee,strTransactionId, strOutTradeNo,strTimeEnd, strTradeStateDesc
 	*
-	* @param strOutTradingCode				the trading code which you want to query			
+	* @param strOutTradingCode				需要查询的订单号			
 	*/
-	bool queryPayStatus(
-		const std::string& strOutTradingCode,
-		CWeChatResps& wechatResps
-	);
+	void queryPayStatus(const std::string& strOutTradingCode, CWeChatResps& wechatResps);
 
 	/**
 	* @name smallProgramLogin
@@ -152,14 +143,11 @@ public:
 	* @brief								
 	*
 	* @note									see https://developers.weixin.qq.com/miniprogram/dev/api/api-login.html?t=20161122
-	*										the output include strSessionKey and strOpenId
+	*										输出字段包括 strSessionKey, strOpenId
 	*
-	* @param strJsCode						the jscode from client				
+	* @param strJsCode						客户端生成的jsCode				
 	*/
-	bool smallProgramLogin(
-		const std::string& strJsCode,
-		CWeChatResps& wechatResps
-	);
+	void smallProgramLogin(const std::string& strJsCode, CWeChatResps& wechatResps);
 
 	/**
 	* @name prepay
@@ -167,20 +155,19 @@ public:
 	* @brief								get prepayId
 	*
 	* @note									see https://pay.weixin.qq.com/wiki/doc/api/wxa/wxa_api.php?chapter=9_1&index=1
-	*										the output include strTradeType and strPrepayId
+	*										输出字段包括 strTradeType, strPrepayId
 	*
-	* @param iAmount						trading amount
-	* @param llValidTime					trading valid time
-	* @param strTradingCode					user trading code
-	* @param strRemoteIP					client ip address
-	* @param strBody						trading body
-	* @param strCallBackAddr				notify url
-	* @param strAttach						custom params
-	* @param strOpenId						wechat open id
-	*										if this is a small program appliction, 
-	*										you must input the strOpenId
+	* @param iAmount						交易金额,单位为分
+	* @param llValidTime					失效时间,单位为秒
+	* @param strTradingCode					商户交易单号
+	* @param strRemoteIP					客户端地址
+	* @param strBody						body
+	* @param strCallBackAddr				回调地址
+	* @param strAttach						自定义信息
+	* @param strOpenId						openId(如果是小程序,则必传此字段)
+	*										
 	*/
-	bool prepay(
+	void prepay(
 		int iAmount,
 		long long llValidTime,
 		const std::string& strTradingCode,
@@ -195,28 +182,25 @@ public:
 	/**
 	* @name prepayWithSign
 	*
-	* @brief								get prepayId first, then sign again to response client
 	*
 	* @note									see https://pay.weixin.qq.com/wiki/doc/api/wxa/wxa_api.php?chapter=7_7&index=3
 	*										and https://pay.weixin.qq.com/wiki/doc/api/app/app.php?chapter=8_3
-	*										the output include strPrepaySignedContent
+	*										输出字段包括 strPrepaySignedContent
 	*
-	*										if you want to custom the strPrepaySignedContent,
-	*										you should create a class that inherits from CWechat
-	*										and rewrite signSmallProgramPrepayInfo or signAppPrepayInfo
+	*										如果想自定义重新签名的格式,
+	*										请创建一个新的类继承自CWeChat,并重写signSmallProgramPrepayInfo与signAppPrepayInfo方法
 	*
-	* @param iAmount						trading amount
-	* @param llValidTime					trading valid time
-	* @param strTradingCode					user trading code
-	* @param strRemoteIP					client ip address
-	* @param strBody						trading body
-	* @param strCallBackAddr				notify url
-	* @param strAttach						custom params
-	* @param strOpenId						wechat open id
-	*										if this is a small program appliction,
-	*										you must input the strOpenId
+	* @param iAmount						交易金额,单位为分
+	* @param llValidTime					失效时间,单位为秒
+	* @param strTradingCode					商户交易单号
+	* @param strRemoteIP					客户端地址
+	* @param strBody						body
+	* @param strCallBackAddr				回调地址
+	* @param strAttach						自定义信息
+	* @param strOpenId						openId(如果是小程序,则必传此字段)
+	*
 	*/
-	bool prepayWithSign(
+	void prepayWithSign(
 		int iAmount,
 		long long llValidTime,
 		const std::string& strTradingCode,
@@ -228,14 +212,20 @@ public:
 		const std::string& strOpenId = std::string("")
 	);
 
-	/**
+	/*
 	* @name refund
 	*
-	* @brief 
+	* @note									see https://pay.weixin.qq.com/wiki/doc/api/app/app.php?chapter=9_4&index=6
 	*
-	* @note									https://pay.weixin.qq.com/wiki/doc/api/app/app.php?chapter=9_4&index=6
+	* @param iTotalAmount					订单总金额
+	* @param iRefundAmount					需要退款的金额
+	* @param strOutTradeNo					需要退款的订单号
+	* @param strOutRefundNo					退款订单号					
+	* @param strRemarks						备注
+	* @param strCallBackAddr				回调地址
+	*
 	*/
-	bool refund(
+	void refund(
 		int iTotalAmount,
 		int iRefundAmount,
 		const std::string& strOutTradeNo,
@@ -257,17 +247,24 @@ protected:
 	std::string m_strKeyPath;
 
 protected:
+	using ParseFunc = std::function<void(const std::string& strReq, const std::string& strResps, std::map<std::string, std::string>&)>;
+
+	//返回信息解析
+	virtual void parseQueryStatusResps(const std::string& strReq, const std::string& strResps, std::map<std::string, std::string>& mapResps, CWeChatResps* pWechatResps);
+
+	virtual void parsePrepayResps(const std::string& strReq, const std::string& strResps, std::map<std::string, std::string>& mapResps, CWeChatResps* pWechatResps);
+
+	virtual void parseRefundResps(const std::string& strReq, const std::string& strResps, std::map<std::string, std::string>& mapResps, CWeChatResps* pWechatResps);
+
 	/**
 	* @name signSmallProgramPrepayInfo
 	*
-	* @brief								append response content to small program
+	* @note									可以重写此方法以实现自定义小程序重新签名的内容
 	*
-	* @note
-	*
-	* @param strNonceStr					random string
-	* @param strTimeStamp					current timestamp
+	* @param strNonceStr					随机字符串
+	* @param strTimeStamp					时间戳
 	* @param strPrepayId					prepayId
-	* @param strSignResult					sign
+	* @param strSignResult					签名结果
 	*/
 	virtual void appendSmallProgramPrepayInfo(
 		const std::string& strNonceStr,
@@ -279,14 +276,12 @@ protected:
 	/**
 	* @name appendAppPrepayInfo
 	*
-	* @brief								append response content to app
+	* @note									可以重写此方法以实现自定义APP重新签名的内容
 	*
-	* @note
-	*
-	* @param strNonceStr					random string
-	* @param strTimeStamp					current timestamp
+	* @param strNonceStr					随机字符串
+	* @param strTimeStamp					时间戳
 	* @param strPrepayId					prepayId
-	* @param strSignResult					sign
+	* @param strSignResult					签名结果
 	*/
 	virtual void appendAppPrepayInfo(
 		const std::string& strNonceStr,
@@ -296,39 +291,31 @@ protected:
 		std::string& strPrepaySignedContent
 	);
 
-	//sign again for client
-	std::string signPrepay(
+
+
+
+	//签名
+	void signPrepay(
+		std::string& strSign,
 		const std::string& strNonceStr,
 		const std::string& strTimeStamp,
 		const std::string& strPrepayId
 	);
 
-	/**
-	* @name sendReqAndParseResps
-	*
-	* @brief								send request and parse response
-	*
-	* @note
-	*
-	* @param strReq							request content
-	* @param strHref						request href
-	* @param func							if func return true, it will save error info
-	*/
-	bool sendReqAndParseResps(
+	void sendReqAndParseResps(
 		const std::string& strReq,
 		const std::string& strHref,
-		std::function<CWechatRet(std::map<std::string, std::string>&)> func,
+		ParseFunc func,
 		bool bPostWithCert = false
 	);
 
-	//append request content
-	std::string appendSmallProgramLoginContent(
-		const std::string& strJsCode
-	);
-	std::string appendQueryStatusContent(
-		const std::string& strOutTradingCode
-	);
-	std::string appendPrepayContent(
+	//拼接请求
+	void appendSmallProgramLoginContent(std::string& strReq, const std::string& strJsCode);
+
+	void appendQueryStatusContent(std::string& strReq, const std::string& strOutTradingCode);
+
+	void appendPrepayContent(
+		std::string& strReq,
 		int iAmount,
 		long long llValidTime,
 		const std::string& strTradingCode,
@@ -339,7 +326,8 @@ protected:
 		const std::string& strOpenId = ""
 	);
 
-	std::string appendRefundContent(
+	void appendRefundContent(
+		std::string& strReq,
 		int iTotalAmount,
 		int iRefundAmount,
 		const std::string& strOutTradeNo,

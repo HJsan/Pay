@@ -10,9 +10,6 @@ namespace SAPay{
 
 enum CAlipayRet
 {
-	//成功
-	ALIPAY_RET_OK = 0,
-
 	//未知错误
 	ALIPAY_RET_UNKNOW_ERROR,
 
@@ -44,10 +41,6 @@ enum CAlipayTradeStatus
 	ALIPAY_TRADE_STATUS_UNKONW
 };
 
-
-
-
-
 struct CAlipayResps
 {
 	CAlipayResps() :iTradeStatus(ALIPAY_TRADE_STATUS_UNKONW) {}
@@ -70,6 +63,10 @@ struct CAlipayResps
 	//query
 	CAlipayTradeStatus iTradeStatus;
 	std::string strTotalAmount;
+
+	//query refund
+	std::string strOutRequestNo;
+	std::string strRefundAmount;
 };
 
 
@@ -79,19 +76,19 @@ struct CAlipayResps
 class CAlipay
 {
 public:
-	//parse notify 
+	//将json通知解析为map
 	static void parseAlipayNotify(
 		const std::string& strNotify,
 		std::map<std::string, std::string>& mapKeyValue
 	);
 
-	//check notify respsonse 0-sucess other-failed
+	//对通知验签 0-sucess other-failed
 	static int verifyAlipayNotify(
 		const std::map<std::string, std::string>& mapNotify,
 		const std::string& strPubKey
 	);
 
-	//check respsonse 0-sucess other-failed
+	//对返回结果验签 0-sucess other-failed
 	static int verifyAlipayResps(
 		const std::string& strRespsContent, 
 		const std::string& strSign, 
@@ -105,10 +102,10 @@ public:
 	* @name CAlipay
 	*
 	* @param strAppId						alipay app id
-	* @param strPubKey						alipay public key
-	* @param strPrivKey						user private key
-	* @param bIsDevMode						if bIsDevMode is true, href is https://openapi.alipaydev.com/gateway.do
-	*										else href is https://openapi.alipay.com/gateway.do
+	* @param strPubKey						支付宝公钥
+	* @param strPrivKey						商户私钥
+	* @param bIsDevMode						是否开启沙箱模式,如果是,请求地址为 https://openapi.alipaydev.com/gateway.do
+	*										否则为 https://openapi.alipay.com/gateway.do
 	*/
 	CAlipay(
 		const std::string& strAppId,
@@ -116,27 +113,24 @@ public:
 		const std::string& strPrivKey,
 		bool bIsDevMode = false
 	);
-	virtual ~CAlipay() { }
+	virtual ~CAlipay() {}
 
 	
 
 	/**
 	* @name appendPayContent
 	*
-	* @brief								append a string to call client sdk
+	* @brief								
 	*
-	* @note								
-	*
-	* @param iAmount						amount
-	* @param strTradingCode					user trading code
-	* @param strSubject						trade subject type
-	* @param strCallBackAddr				notify url
-	* @param strTimeOut						valid time, see https://docs.open.alipay.com/204/105465/
-	* @param strPassBackParams				custom call back params
-	*
-	* @return std::string
+	* @param iAmount						交易金额,单位为分
+	* @param strTradingCode					商户订单号
+	* @param strSubject						subject
+	* @param strCallBackAddr				回调地址
+	* @param strTimeOut						生效时间 https://docs.open.alipay.com/204/105465/
+	* @param strPassBackParams				自定义消息
 	*/
-	std::string appendPayContent(
+	void appendPayContent(
+		std::string& strContent,
 		int iAmount,
 		const std::string& strTradingCode,
 		const std::string& strSubject,
@@ -148,17 +142,17 @@ public:
 	/**
 	* @name refund
 	*
-	* @brief								refund a trading
+	* @brief								
 	*
 	* @note									see https://docs.open.alipay.com/api_1/alipay.trade.refund
-	*										the output include strTradeNo, strOutTradeNo, strBuyerLogonId, 
+	*										输出字段包括 strTradeNo, strOutTradeNo, strBuyerLogonId, 
 	*										strBuyerUserId, strGmtRefundPay, strFundChange, strRefundFee
 	*
-	* @param iAmount						refund amount
-	* @param strTradingCode					user trading code
-	* @param strOutTradingCode				the trading code which you want to refund						
+	* @param iAmount						退款金额
+	* @param strTradingCode					退款订单号
+	* @param strOutTradingCode				需要退款的订单号						
 	*/
-	bool refund(
+	void refund(
 		int iAmount,
 		const std::string& strTradingCode,
 		const std::string& strOutTradingCode,
@@ -168,17 +162,18 @@ public:
 	/**
 	* @name withdraw
 	*
-	* @brief								transfer money to user account
+	* @brief								提现、单笔转账
 	*
 	* @note									see https://docs.open.alipay.com/api_28/alipay.fund.trans.toaccount.transfer
-	*										the output include strOutBizNo, strPayDate, strOrderId
+	*										输出字段包括 strOutBizNo, strPayDate, strOrderId
 	*
-	* @param iAmount						withdraw amount
-	* @param strTradingCode					user trading code
-	* @param strAlipayAccount				user alipay account
-	* @param strTrueName					user true name				
+	* @param iAmount						转账金额
+	* @param strTradingCode					订单号
+	* @param strAlipayAccount				用户支付宝账号
+	* @param strTrueName					用户真实姓名		
+	* @param strRemarks						备注
 	*/
-	bool withdraw(
+	void withdraw(
 		int iAmount,
 		const std::string& strTradingCode,
 		const std::string& strAlipayAccount,
@@ -190,16 +185,32 @@ public:
 	/**
 	* @name queryPayStatus
 	*
-	* @brief								query bill status
+	* @brief								查询订单
 	*
 	* @note									see https://docs.open.alipay.com/api_1/alipay.trade.query/
-	*										the output include strTradeNo, strOutTradeNo, strBuyerLogonId, 
+	*										输出字段包括 strTradeNo, strOutTradeNo, strBuyerLogonId, 
 	*										strBuyerUserId, strTradeStatus, strTotalAmount
 	*
-	* @param strOutTradingCode				the trading code which you want to query				
+	* @param strOutTradingCode				需要查询的订单号				
 	*/
-	bool queryPayStatus(
+	void queryPayStatus(
 		const std::string& strOutTradingCode,
+		CAlipayResps& alipayResps
+	);
+
+	/**
+	* @name queryRefund
+	*
+	* @brief								查询订单退款状态
+	*
+	* @note
+	*
+	* @param strOutTradingCode				被退款的订单号
+	* @param strRefundTradingCode			退款订单号
+	*/
+	void queryRefund(
+		const std::string& strOutTradingCode,
+		const std::string& strRefundTradingCode,
 		CAlipayResps& alipayResps
 	);
 
@@ -211,47 +222,54 @@ protected:
 	std::string m_strPrivKey;
 
 protected:
+	using ParseFunc = std::function<void(const std::string&, const std::string&, rapidjson::Value&)>;
+
+	//返回信息解析
+	virtual void parseTransferResps(const std::string& strReq, const std::string& strResps, rapidjson::Value& respsContent, CAlipayResps* pAlipayResps);
+
+	virtual void parseRefundResps(const std::string& strReq, const std::string& strResps, rapidjson::Value& respsContent, CAlipayResps* pAlipayResps);
+
+	virtual void parseQueryStatusResps(const std::string& strReq, const std::string& strResps, rapidjson::Value& respsContent, CAlipayResps* pAlipayResps);
+
+	virtual void parseQueryRefundResps(const std::string& strReq, const std::string& strResps, rapidjson::Value& respsContent, CAlipayResps* pAlipayResps);
 	
-	/**
-	* @name sendReqAndParseResps
-	*
-	* @brief								send request and parse response
-	*
-	* @note
-	*
-	* @param strReq							request content 
-	* @param strRespsName					resposne key name
-	* @param func							if func return true, it will save error info
-	*/
-	bool sendReqAndParseResps(
+	void sendReqAndParseResps(
 		const std::string& strReq,
 		const std::string& strRespsName,
-		const std::function<CAlipayRet(rapidjson::Value&)> func
+		ParseFunc func
 	);
 
-	//append request content
-	std::string appendTransferContent(
+	//拼接请求内容
+	void appendContentAndSign(
+		std::string& totalString, 
+		const std::string& biz_content, 
+		const std::string& strMethodName,
+		const std::string& strCharset = "utf-8",
+		const std::string& strCallBack = ""
+	);
+
+	void appendTransferContent(
+		std::string& strReq,
 		int iAmount,
 		const std::string& strAlipayAccount,
 		const std::string& strTrueName,
 		const std::string& strTradingCode,
 		const std::string& strRemarks = std::string("")
 	);
-	std::string appendRefundContent(
+	void appendRefundContent(
+		std::string& strReq,
 		int iAmount,
 		const std::string& strTradingCode,
 		const std::string& strOutTradingCode
 	);
-	std::string appendQueryStatusContent(
+	void appendQueryStatusContent(
+		std::string& strReq,
 		const std::string& strOutTradingCode
 	);
-
-	//nouse
-	std::string appendCloseContent(
-		const std::string& strTradingCode
-	);
-	std::string appendDowloadUrlContent(
-		const std::string& strDateTime
+	void appendQueryRefundContent(
+		std::string& strReq,
+		const std::string& strOutTradingCode,
+		const std::string& strRefundTradingCode
 	);
 };
 

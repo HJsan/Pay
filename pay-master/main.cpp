@@ -2,6 +2,8 @@
 #include <iostream>
 #include "Pay/Alipay.h"
 #include "Pay/WeChat.h"
+#include "Pay/PayError.h"
+#include "PayUtils/HttpClient.h"
 
 #define ALIPAY_APP_ID			"your alipay app id"
 #define ALIPAY_PUB_KEY			"your alipay pub key"
@@ -83,9 +85,9 @@ static bool testWechatPrepay()
 			wechatResps
 		);
 	}
-	catch (const CWechatError& e)
+	catch (const CWeChatError& e)
 	{
-		CWechatRet iWeChatRet = e.getErrorCode();
+		CWeChatRet iWeChatRet = e.getErrorCode();
 		if (iWeChatRet == WECHAT_RET_NETWORK_ERROR)
 			cout << "wechat net work error, code : " << e.getNetWorkCode() << endl;
 		else if (iWeChatRet == WECHAT_RET_VERIFY_ERROR)
